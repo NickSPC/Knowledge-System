@@ -22,3 +22,10 @@ export type Relationship = {
     targetId: string;
     type: string;
 };
+
+export type EntityInput = {
+    name: string;
+    type: EntityType;
+    connectedIds: string[];
+    relationType: string;
+};
