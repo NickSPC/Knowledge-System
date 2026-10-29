@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -17,29 +17,40 @@ import {
   CircularProgress,
   Tooltip,
   TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
 } from "@mui/material";
 
 import AddIcon from "@mui/icons-material/Add";
 import SyncIcon from "@mui/icons-material/Sync";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-import { getSources } from "../services/api";
+import DataActions from "../components/DataActions";
+import { deleteSource, getSources } from "../services/api";
 import { formatDate } from "../services/format";
 import type { Source } from "../types";
 
 export default function SourcesPage() {
   const [sources, setSources] = useState<Source[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sourceToDelete, setSourceToDelete] = useState<Source | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const sourceSearch = searchParams.get("buscar") ?? "";
 
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const loadSources = useCallback(() => {
     getSources().then(setSources).catch((error: unknown) => {
       setError(error instanceof Error ? error.message : "No se pudieron cargar las fuentes.");
     });
   }, []);
+
+  useEffect(loadSources, [loadSources]);
 
   if (error) return <Alert severity="error">{error}</Alert>;
 
@@ -72,6 +83,21 @@ export default function SourcesPage() {
       value: sources.reduce((total, source) => total + source.recordCount, 0),
     },
   ];
+
+  const handleConfirmDelete = async () => {
+    if (!sourceToDelete) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteSource(sourceToDelete.id);
+      setSourceToDelete(null);
+      loadSources();
+    } catch (deleteFailure) {
+      setDeleteError(deleteFailure instanceof Error ? deleteFailure.message : "No se pudo eliminar la fuente.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleAddSource = () => {
     navigate("/fuentes/nueva");
@@ -107,6 +133,7 @@ export default function SourcesPage() {
         >
           Agregar fuente
         </Button>
+        <DataActions onChange={loadSources} />
       </Box>
 
       <Box
@@ -197,10 +224,10 @@ export default function SourcesPage() {
                     </IconButton></span>
                   </Tooltip>
 
-                  <Tooltip title="La eliminación de fuentes todavía no está disponible">
-                    <span><IconButton disabled aria-label="Eliminar fuente">
+                  <Tooltip title="Eliminar fuente">
+                    <IconButton aria-label="Eliminar fuente" onClick={() => setSourceToDelete(source)}>
                       <DeleteIcon />
-                    </IconButton></span>
+                    </IconButton>
                   </Tooltip>
                 </TableCell>
               </TableRow>
@@ -218,6 +245,22 @@ export default function SourcesPage() {
           </TableBody>
         </Table>
       </Card>
+      <Dialog open={sourceToDelete !== null} onClose={isDeleting ? undefined : () => setSourceToDelete(null)} fullWidth maxWidth="xs">
+        <DialogTitle>¿Eliminar la fuente?</DialogTitle>
+        <DialogContent>
+          {deleteError && <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert>}
+          <DialogContentText>
+            Se borra «{sourceToDelete?.name}» junto con sus {sourceToDelete?.recordCount} nodos y las conexiones
+            de esos nodos. No se puede deshacer.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSourceToDelete(null)} disabled={isDeleting}>Cancelar</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDelete} disabled={isDeleting}>
+            {isDeleting ? "Eliminando…" : "Eliminar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

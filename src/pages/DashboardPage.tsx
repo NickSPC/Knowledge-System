@@ -17,15 +17,14 @@ import LinkIcon from "@mui/icons-material/Link";
 import DescriptionIcon from "@mui/icons-material/Description";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import AddIcon from "@mui/icons-material/Add";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
 import { getEntities, getRelationships, getSources } from "../services/api";
+import { computeWarnings } from "../services/warnings";
 import { formatDate } from "../services/format";
-import { entityTypeColors } from "../theme";
-import type { Entity, EntityType, Relationship, Source } from "../types";
-
-const entityTypes: EntityType[] = ["Cliente", "Producto", "Pedido"];
+import { colorForType } from "../theme";
+import type { Entity, Relationship, Source } from "../types";
 
 type Stat = {
   label: string;
@@ -86,7 +85,8 @@ export default function DashboardPage() {
     },
   ];
 
-  const countByType = entityTypes.map((type) => ({
+  const types = Array.from(new Set(entities.map((e) => e.type))).sort();
+  const countByType = types.map((type) => ({
     type,
     count: entities.filter((entity) => entity.type === type).length,
   }));
@@ -228,7 +228,7 @@ export default function DashboardPage() {
                         height: "100%",
                         width: `${(item.count / maxCount) * 100}%`,
                         borderRadius: 5,
-                        bgcolor: entityTypeColors[item.type],
+                        bgcolor: colorForType(item.type),
                       }}
                     />
                   </Box>
@@ -266,9 +266,11 @@ export default function DashboardPage() {
                         sx={{ fontWeight: 600 }}
                         noWrap
                       >
-                        {isOk
-                          ? `Se sincronizó ${source.name}`
-                          : `Falló la conexión con ${source.name}`}
+                        {!isOk
+                          ? `Falló la conexión con ${source.name}`
+                          : source.lastSync
+                            ? `Se sincronizó ${source.name}`
+                            : `Se cargó ${source.name}`}
                       </Typography>
 
                       <Typography variant="caption" color="text.secondary">
@@ -285,23 +287,61 @@ export default function DashboardPage() {
         </Card>
       </Box>
 
-      {/* Duplicates teaser */}
-      <Card variant="outlined" sx={{ borderColor: "warning.main" }}>
-        <CardContent sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <WarningAmberIcon color="warning" />
-
-          <Box>
-            <Typography sx={{ fontWeight: 600 }}>
-              1 posible duplicado detectado
-            </Typography>
-
-            <Typography variant="body2" color="text.secondary">
-              "Acme S.A." y "ACME SA" parecen ser la misma entidad, y vienen de
-              fuentes distintas.
-            </Typography>
-          </Box>
-        </CardContent>
-      </Card>
+      {/* Avisos: problemas comunes detectados en los datos (src/services/warnings.ts) */}
+      <WarningsCard entities={entities} relationships={relationships} />
     </Box>
+  );
+}
+
+function WarningsCard({ entities, relationships }: { entities: Entity[]; relationships: Relationship[] }) {
+  const warnings = computeWarnings(entities, relationships);
+  const names = new Map(entities.map((entity) => [entity.id, entity.name]));
+  const kinds = Array.from(new Set(warnings.map((warning) => warning.kind)));
+
+  return (
+    <Card variant="outlined" sx={{ mt: 3, borderColor: warnings.length > 0 ? "warning.main" : undefined }}>
+      <CardContent>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+          <WarningAmberIcon color={warnings.length > 0 ? "warning" : "disabled"} />
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>Avisos</Typography>
+          <Chip size="small" label={warnings.length} color={warnings.length > 0 ? "warning" : "default"} />
+        </Box>
+
+        {warnings.length === 0 && (
+          <Typography color="text.secondary">No se detectaron problemas en los datos.</Typography>
+        )}
+
+        <Box sx={{ display: "grid", gap: 2 }}>
+          {kinds.map((kind) => {
+            const group = warnings.filter((warning) => warning.kind === kind);
+            return (
+              <Box key={kind}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  {kind} <Typography component="span" variant="caption" color="text.secondary">({group.length})</Typography>
+                </Typography>
+                <Box sx={{ display: "grid", gap: 1 }}>
+                  {group.map((warning, index) => (
+                    <Alert key={index} severity={warning.severity} sx={{ alignItems: "center" }}>
+                      {warning.detail}{" "}
+                      {warning.entityIds.map((entityId) => (
+                        <Button
+                          key={entityId}
+                          size="small"
+                          component={RouterLink}
+                          to={`/entidad/${encodeURIComponent(entityId)}`}
+                          sx={{ ml: 0.5, py: 0, minWidth: 0, textTransform: "none" }}
+                        >
+                          {names.get(entityId)}
+                        </Button>
+                      ))}
+                    </Alert>
+                  ))}
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </CardContent>
+    </Card>
   );
 }

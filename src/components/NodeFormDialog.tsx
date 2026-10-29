@@ -7,13 +7,16 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  MenuItem,
+  IconButton,
+  Stack,
   TextField,
+  Typography,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import CloseIcon from "@mui/icons-material/Close";
 
-import type { Entity, EntityInput, EntityType } from "../types";
+import type { Entity, EntityInput } from "../types";
 
-const entityTypes: EntityType[] = ["Cliente", "Producto", "Pedido"];
 const DEFAULT_RELATION = "relacionado con";
 
 type NodeFormDialogProps = {
@@ -37,13 +40,21 @@ export default function NodeFormDialog({
   const isEditing = entityToEdit !== undefined;
 
   const [name, setName] = useState(entityToEdit?.name ?? "");
-  const [type, setType] = useState<EntityType>(entityToEdit?.type ?? "Cliente");
+  const [type, setType] = useState(entityToEdit?.type ?? "");
+  // Detalles del nodo (Entity.data) como filas clave/valor
+  const [details, setDetails] = useState<{ key: string; value: string }[]>(
+    Object.entries(entityToEdit?.data ?? {}).map(([key, value]) => ({ key, value: String(value) })),
+  );
   const [connectedEntities, setConnectedEntities] = useState<Entity[]>([]);
   const [relationType, setRelationType] = useState(DEFAULT_RELATION);
 
   // Sorted by type so the options can be grouped
   const options = [...entities].sort((a, b) => a.type.localeCompare(b.type));
-  const isValid = name.trim() !== "";
+  const existingTypes = Array.from(new Set(entities.map((entity) => entity.type))).sort();
+  const isValid = name.trim() !== "" && type.trim() !== "";
+
+  const updateDetail = (index: number, field: "key" | "value", text: string) =>
+    setDetails((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: text } : row)));
 
   const handleSubmit = () => {
     if (!isValid || isSubmitting) {
@@ -52,7 +63,16 @@ export default function NodeFormDialog({
 
     onSubmit({
       name: name.trim(),
-      type,
+      type: type.trim(),
+      // Los valores numéricos se guardan como número; el resto como texto
+      data: Object.fromEntries(
+        details
+          .filter((row) => row.key.trim() !== "")
+          .map((row) => {
+            const value = row.value.trim();
+            return [row.key.trim(), value !== "" && Number.isFinite(Number(value)) ? Number(value) : value];
+          }),
+      ),
       connectedIds: connectedEntities.map((entity) => entity.id),
       relationType: relationType.trim() || DEFAULT_RELATION,
     });
@@ -80,18 +100,52 @@ export default function NodeFormDialog({
           sx={{ mt: 1 }}
         />
 
-        <TextField
-          select
-          label="Tipo"
-          value={type}
-          onChange={(event) => setType(event.target.value as EntityType)}
-        >
-          {entityTypes.map((entityType) => (
-            <MenuItem key={entityType} value={entityType}>
-              {entityType}
-            </MenuItem>
+        <Autocomplete
+          freeSolo
+          options={existingTypes}
+          inputValue={type}
+          onInputChange={(_, value) => setType(value)}
+          renderInput={(params) => (
+            <TextField {...params} label="Tipo" required helperText="Elegí uno existente o escribí uno nuevo" />
+          )}
+        />
+
+        <Stack spacing={1}>
+          <Typography variant="subtitle2">Detalles</Typography>
+          {details.map((row, index) => (
+            <Stack key={index} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <TextField
+                size="small"
+                label="Campo"
+                value={row.key}
+                onChange={(event) => updateDetail(index, "key", event.target.value)}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                size="small"
+                label="Valor"
+                value={row.value}
+                onChange={(event) => updateDetail(index, "value", event.target.value)}
+                sx={{ flex: 2 }}
+              />
+              <IconButton
+                size="small"
+                aria-label="Quitar detalle"
+                onClick={() => setDetails((rows) => rows.filter((_, i) => i !== index))}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
           ))}
-        </TextField>
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => setDetails((rows) => [...rows, { key: "", value: "" }])}
+            sx={{ alignSelf: "flex-start" }}
+          >
+            Agregar detalle
+          </Button>
+        </Stack>
 
         {!isEditing && (
           <>

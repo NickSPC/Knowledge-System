@@ -1,4 +1,4 @@
-import type { Entity, EntityInput, Relationship, Source, User } from "../types";
+import type { Entity, EntityInput, HistoryEntry, ImportPayload, ImportResult, Relationship, Source, User } from "../types";
 
 export const SESSION_EXPIRED_EVENT = "knowledge-system:session-expired";
 
@@ -43,7 +43,7 @@ export const getRelationships = () => request<Relationship[]>("/relationships");
 
 export const createEntity = (input: EntityInput) => request<Entity>("/entities", {
   method: "POST",
-  body: JSON.stringify({ type: input.type, name: input.name }),
+  body: JSON.stringify({ type: input.type, name: input.name, data: input.data }),
 });
 
 export const createRelationship = (relationship: Relationship) =>
@@ -52,7 +52,7 @@ export const createRelationship = (relationship: Relationship) =>
     body: JSON.stringify(relationship),
   });
 
-export const updateEntity = (id: string, changes: Pick<EntityInput, "name" | "type">) =>
+export const updateEntity = (id: string, changes: Pick<EntityInput, "name" | "type" | "data">) =>
   request<Entity>(`/entities/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(changes),
@@ -60,6 +60,21 @@ export const updateEntity = (id: string, changes: Pick<EntityInput, "name" | "ty
 
 export const deleteEntity = (id: string) =>
   request<void>(`/entities/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export const getHistory = (id: string) =>
+  request<HistoryEntry[]>(`/entities/${encodeURIComponent(id)}/history`);
+
+export const deleteSource = (id: number) => request<void>(`/sources/${id}`, { method: "DELETE" });
+
+export const deleteRelationship = (relationship: Relationship) =>
+  request<void>("/relationships", { method: "DELETE", body: JSON.stringify(relationship) });
+
+export const importData = (payload: ImportPayload) => request<ImportResult>("/import", {
+  method: "POST",
+  body: JSON.stringify(payload),
+});
+
+export const clearData = () => request<void>("/data", { method: "DELETE" });
 
 export const login = (email: string, password: string) => request<User>("/auth/login", {
   method: "POST",

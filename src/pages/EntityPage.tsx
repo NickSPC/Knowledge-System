@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import EditIcon from "@mui/icons-material/Edit";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ReactMarkdown from "react-markdown";
 import {
   Box,
@@ -14,9 +16,10 @@ import {
   ListItemText,
 } from "@mui/material";
 
-import { getEntities, getRelationships } from "../services/api";
-import { entityTypeColors } from "../theme";
-import type { Entity, Relationship } from "../types";
+import NodeFormDialog from "../components/NodeFormDialog";
+import { getEntities, getRelationships, updateEntity } from "../services/api";
+import { colorForType } from "../theme";
+import type { Entity, EntityInput, Relationship } from "../types";
 
 export default function EntityPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,8 +28,12 @@ export default function EntityPage() {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     Promise.all([getEntities(), getRelationships()]).then(
       ([loadedEntities, loadedRelationships]) => {
         setEntities(loadedEntities);
@@ -36,6 +43,25 @@ export default function EntityPage() {
       setError(error instanceof Error ? error.message : "No se pudo cargar la entidad.");
     }).finally(() => setIsLoading(false));
   }, []);
+
+  useEffect(loadData, [loadData]);
+
+  const handleSave = async (values: EntityInput) => {
+    if (!id) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await updateEntity(id, { name: values.name, type: values.type, data: values.data });
+      setIsEditing(false);
+      // Si cambió el tipo cambia el prefijo del id (cli-1 -> per-1): ir a la nota nueva
+      if (saved.id !== id) navigate(`/entidad/${saved.id}`, { replace: true });
+      loadData();
+    } catch (saveFailure) {
+      setSaveError(saveFailure instanceof Error ? saveFailure.message : "No se pudo guardar.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (isLoading) {
     return <CircularProgress />;
@@ -125,20 +151,47 @@ export default function EntityPage() {
       }}
     >
       <Box>
+        <Button component={Link} to="/grafo" state={{ select: entity.id }} startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
+          Volver al grafo
+        </Button>
+        <br />
         <Chip
           label={entity.type}
           size="small"
           sx={{
-            bgcolor: entityTypeColors[entity.type],
+            bgcolor: colorForType(entity.type),
             color: "#fff",
             fontWeight: 600,
             mb: 1,
           }}
         />
 
-        <Typography variant="h4" sx={{ mb: 2 }}>
-          {entity.name}
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", mb: 2 }}>
+          <Typography variant="h4" sx={{ flexGrow: 1 }}>
+            {entity.name}
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={() => {
+              setSaveError(null);
+              setIsEditing(true);
+            }}
+          >
+            Editar
+          </Button>
+        </Box>
+
+        {isEditing && (
+          <NodeFormDialog
+            entities={entities}
+            entityToEdit={entity}
+            isSubmitting={isSaving}
+            error={saveError}
+            onClose={() => setIsEditing(false)}
+            onSubmit={handleSave}
+          />
+        )}
 
         <Card
           variant="outlined"
